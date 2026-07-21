@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SellScout</title>
+  <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/pages.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- Draggable title strip (native caption buttons overlay on the right) -->
+    <header class="titlebar">
+      <div class="brand">
+        <span class="brand-mark" id="brand-mark"></span>
+        <span class="brand-name">SellScout</span>
+      </div>
+      <div class="titlebar-spacer"></div>
+      <div class="titlebar-actions">
+        <span class="data-badge" id="data-badge" title="Data source">Demo data</span>
+        <button class="icon-btn" id="btn-refresh" title="Refresh data"></button>
+      </div>
+    </header>
+
+    <!-- Sidebar navigation -->
+    <aside class="sidebar">
+      <nav id="nav-main" class="nav"></nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-note" id="sidebar-version">v1.0.0</div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main" id="main">
+      <div class="topbar">
+        <h1 class="page-title" id="page-title">Dashboard</h1>
+        <div class="topbar-right">
+          <div class="search-wrap">
+            <span class="search-icon" id="search-icon"></span>
+            <input id="global-search" class="search-input" type="text"
+                   placeholder="Search products…" autocomplete="off" spellcheck="false" />
+            <span class="search-kbd">/</span>
+          </div>
+        </div>
+      </div>
+      <div class="content" id="page"></div>
+    </main>
+  </div>
+
+  <!-- Slide-over detail drawer -->
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-inner" id="drawer-inner"></div>
+  </aside>
+
+  <!-- Toasts -->
+  <div class="toast-root" id="toast-root"></div>
+
+  <!-- Chart hover tooltip -->
+  <div class="chart-tip" id="chart-tip" hidden></div>
+
+  <!-- Modules (classic scripts, ordered) -->
+  <script src="js/format.js"></script>
+  <script src="js/icons.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/log.js"></script>
+  <script src="js/info.js"></script>
+  <script src="js/fees.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/data/demo-products.js"></script>
+  <script src="js/data/demo-news.js"></script>
+  <script src="js/data/demo-trends.js"></script>
+  <script src="js/data/demo-business.js"></script>
+  <script src="js/pages/dashboard.js"></script>
+  <script src="js/pages/finder.js"></script>
+  <script src="js/pages/sourcing.js"></script>
+  <script src="js/pages/trendsnews.js"></script>
+  <script src="js/pages/calculator.js"></script>
+  <script src="js/pages/business.js"></script>
+  <script src="js/pages/settings.js"></script>
+  <script src="js/onboarding.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

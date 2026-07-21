@@ -1,0 +1,36 @@
+{
+  "name": "sellscout",
+  "productName": "SellScout",
+  "version": "1.0.0",
+  "description": "Product research, sourcing, and profit analytics for Amazon sellers",
+  "main": "main.js",
+  "author": "Chris Korzen",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "preview": "node tools/preview-server.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "build": {
+    "appId": "com.korzen.sellscout",
+    "productName": "SellScout",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/sellscout.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
