@@ -103,12 +103,9 @@ body {
 .brand { display: flex; align-items: center; gap: 9px; width: calc(var(--sidebar-w) - 18px); }
 
 .brand-mark {
-  width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 7px;
-  background: linear-gradient(135deg, #0a84ff, #0055d4);
-  box-shadow: 0 1px 3px rgba(0, 85, 212, 0.35);
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
 }
-.brand-mark svg { width: 15px; height: 15px; stroke: #fff; }
+.brand-mark svg { width: 26px; height: 26px; display: block; }
 
 .brand-name { font-size: 13.5px; font-weight: 650; letter-spacing: -0.01em; }
 

@@ -309,13 +309,12 @@ th .info-btn svg { width: 12px; height: 12px; }
 
 .ob-hero { text-align: center; padding: 4px 0 6px; }
 .ob-mark {
-  width: 64px; height: 64px; border-radius: 17px;
+  width: 66px; height: 66px; border-radius: 999px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #0a84ff, #0055d4);
-  box-shadow: 0 6px 20px rgba(0, 85, 212, 0.35);
+  box-shadow: 0 6px 20px rgba(76, 130, 247, 0.35);
   margin-bottom: 14px;
 }
-.ob-mark svg { width: 36px; height: 36px; stroke: #fff; }
+.ob-mark svg { width: 66px; height: 66px; display: block; }
 .ob-title { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
 .ob-sub { font-size: 13px; color: var(--ink-2); margin: 7px auto 0; max-width: 400px; line-height: 1.5; }
 
