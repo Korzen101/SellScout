@@ -164,7 +164,7 @@
       input.addEventListener('change', () => {
         const cogs = { ...(Store.get('cogs') || {}) };
         if (input.value === '') delete cogs[input.dataset.cogs];
-        else cogs[input.dataset.cogs] = +input.value;
+        else cogs[input.dataset.cogs] = (+input.value) / Fmt.rate(); // store USD
         Store.set('cogs', cogs);
         render(el, ctx);
       }));
@@ -230,7 +230,7 @@
               <td class="td-r num">${Fmt.money(s.fees)}</td>
               <td class="td-r num">${Fmt.money(s.net)}</td>
               <td class="td-r"><input class="field num" data-cogs="${Fmt.esc(s.sku)}" type="number" step="0.01" min="0"
-                value="${c != null ? c : ''}" placeholder="—" style="width:76px;height:26px;text-align:right"></td>
+                value="${c != null ? (c * Fmt.rate()).toFixed(2) : ''}" placeholder="${Fmt.sym()}" style="width:76px;height:26px;text-align:right"></td>
               <td class="td-r num" style="font-weight:650;color:${tp == null ? 'var(--ink-3)' : tp >= 0 ? 'var(--good-text)' : 'var(--bad-text)'}">${tp == null ? 'add COGS' : Fmt.money(tp)}</td>
             </tr>`;
           }).join('')}

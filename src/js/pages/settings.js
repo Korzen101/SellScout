@@ -174,7 +174,7 @@
           </div></div>
           <div class="set-row">
             <div class="set-info">
-              <div class="set-name">Version <span class="micro" id="s-version">1.1.1</span></div>
+              <div class="set-name">Version <span class="micro" id="s-version">1.2</span></div>
               <div class="set-desc" style="margin-top:6px">SellScout surfaces resale opportunities by combining demand,
               trend, competition, margin and risk signals into one transparent score. All estimates are research guidance —
               validate with live data before buying inventory. This tool is independent and not affiliated with or endorsed
@@ -329,7 +329,7 @@
     if (window.sellscout) {
       window.sellscout.version().then((v) => {
         const n = el.querySelector('#s-version');
-        if (n) n.textContent = v;
+        if (n) n.textContent = String(v).replace(/\.0$/, '');
       }).catch(() => {});
     }
   }

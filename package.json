@@ -1,7 +1,7 @@
 {
   "name": "sellscout",
   "productName": "SellScout",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Product research, sourcing, and profit analytics for Amazon sellers",
   "main": "main.js",
   "author": "Chris Korzen",

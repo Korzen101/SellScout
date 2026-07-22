@@ -9,13 +9,10 @@
   }
 
   window.Icons = {
-    // Self-contained brand mark: flat blue circle + white twin-peak mountain
-    // (matches assets/sellscout.ico). Rendered without the shared stroke.
-    logo: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">' +
-      '<circle cx="128" cy="128" r="120" fill="#4C82F7"/>' +
-      '<path d="M26 182 L92 80 L120 120 L152 50 L230 182 Z" fill="#fff"/>' +
-      '<path d="M152 50 L136 118 L151 104 Z" fill="#4C82F7"/>' +
-      '<path d="M92 80 L106 122 L94 116 Z" fill="#4C82F7"/></svg>',
+    // Circular crop of the SellScout artwork (embedded by brand.js, matches
+    // assets/sellscout.ico). Falls back to a plain disc if brand.js is absent.
+    logo: (typeof window !== 'undefined' && window.BRAND_LOGO) ||
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><circle cx="48" cy="48" r="46" fill="#2a3a66"/></svg>',
     dashboard: I('<rect x="3.5" y="3.5" width="7.4" height="7.4" rx="2"/><rect x="13.1" y="3.5" width="7.4" height="7.4" rx="2"/><rect x="3.5" y="13.1" width="7.4" height="7.4" rx="2"/><rect x="13.1" y="13.1" width="7.4" height="7.4" rx="2"/>'),
     finder: I('<circle cx="11" cy="11" r="6.5"/><path d="M20.5 20.5l-4.9-4.9"/>'),
     sourcing: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.3 3.9 5.2 3.9 8.5s-1.3 6.2-3.9 8.5c-2.6-2.3-3.9-5.2-3.9-8.5s1.3-6.2 3.9-8.5z"/>'),

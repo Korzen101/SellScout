@@ -250,7 +250,7 @@
           </div>`).join('') || '<div class="micro">No quotes yet.</div>'}
         <div class="quote-add">
           <input class="field" id="q-supplier" placeholder="Supplier">
-          <input class="field num" id="q-price" type="number" step="0.01" min="0" placeholder="$/unit">
+          <input class="field num" id="q-price" type="number" step="0.01" min="0" placeholder="${Fmt.sym()}/unit">
           <input class="field num" id="q-moq" type="number" min="0" placeholder="MOQ">
           <input class="field num" id="q-lead" type="number" min="0" placeholder="Lead d">
           <button class="btn btn-tint btn-sm" id="q-add">Add</button>
@@ -425,7 +425,7 @@
         const pl = Pipeline.get(p.id);
         Pipeline.set(p.id, {
           quotes: [...pl.quotes, {
-            supplier: v('#q-supplier'), price: +v('#q-price'),
+            supplier: v('#q-supplier'), price: (+v('#q-price')) / Fmt.rate(), // store USD
             moq: +v('#q-moq') || 0, leadDays: +v('#q-lead') || 0, date: Date.now()
           }]
         });

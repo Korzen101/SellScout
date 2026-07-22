@@ -251,7 +251,7 @@
 
     if (window.sellscout) {
       window.sellscout.version().then((v) => {
-        document.getElementById('sidebar-version').textContent = 'v' + v;
+        document.getElementById('sidebar-version').textContent = 'v' + String(v).replace(/\.0$/, '');
       }).catch(() => {});
     }
 
