@@ -110,22 +110,39 @@
     const raw = (input || '').trim();
     if (!raw) { ctx.toast('Paste an ASIN or Amazon product URL first'); return; }
     if (!window.sellscout) { ctx.toast('Live analysis needs the desktop app (npm start)'); return; }
-    if (!Store.secretState('keepaApiKey').set) {
-      UI.modal(`<div class="card-title" style="font-size:16px">Keepa key needed</div>
-        <p class="card-sub" style="margin-top:8px;line-height:1.55">Live product analysis pulls price, rank and review
-        data from Keepa. Add an API key in Settings → Data sources.
-        <a class="ext" data-ext="https://keepa.com/#!api">Get a key at keepa.com ${'↗'}</a></p>`);
+
+    // Prefer Keepa (full history + reviews); fall back to the seller's own
+    // SP-API connection, which is free but has no review/trend history.
+    const hasKeepa = Store.secretState('keepaApiKey').set;
+    const hasSpapi = await window.sellscout.spapi.configured().catch(() => false);
+    if (!hasKeepa && !hasSpapi) {
+      UI.modal(`<div class="card-title" style="font-size:16px">Connect a product data source</div>
+        <p class="card-sub" style="margin-top:8px;line-height:1.55">Analyzing a live ASIN needs one of these:</p>
+        <div class="ob-feat" style="margin-top:10px">${Icons.business}<div><b>Amazon SP-API — free</b>
+          <span>Uses your own seller account. Gives price, offer count, sales rank and dimensions.
+          No review or trend history. Connect it on the My Business page.</span></div></div>
+        <div class="ob-feat" style="margin-top:8px">${Icons.spark}<div><b>Keepa — paid</b>
+          <span>Adds review counts and 12-month price/rank history, so trend and competition scores are complete.
+          <a class="ext" data-ext="https://keepa.com/#!api">keepa.com ↗</a></span></div></div>`);
       return;
     }
+
     btn.disabled = true; btn.textContent = 'Analyzing…';
     try {
-      const res = await window.sellscout.keepa.product(raw);
+      const res = hasKeepa
+        ? await window.sellscout.keepa.product(raw)
+        : await window.sellscout.spapi.product(raw);
       if (!res.ok) { ctx.toast(res.error || 'Analysis failed'); return; }
+      if (res.limited) {
+        ctx.toast('Analyzed via SP-API — no review/trend data, scores are partial');
+      }
       const analyzed = (Store.get('analyzed') || []).filter((p) => p.id !== res.product.id);
       analyzed.unshift(res.product);
       Store.set('analyzed', analyzed.slice(0, 40));
       ctx.rescore();
-      ctx.toast('Analyzed — ' + (res.tokensLeft != null ? res.tokensLeft + ' Keepa tokens left' : 'added to catalog'));
+      if (!res.limited) {
+        ctx.toast('Analyzed — ' + (res.tokensLeft != null ? res.tokensLeft + ' Keepa tokens left' : 'added to catalog'));
+      }
       ctx.openProduct(res.product.id);
     } finally {
       btn.disabled = false;
@@ -296,7 +313,8 @@
           <div class="d-head-main">
             <div class="d-title">${Fmt.esc(p.name)}</div>
             <div class="d-chips">
-              ${p.live ? '<span class="chip chip-opp">Live · amazon.com</span>' : ''}
+              ${p.live ? `<span class="chip chip-opp">Live · ${Fmt.esc(p.dataSource || 'Keepa')}</span>` : ''}
+              ${p.dataSource === 'SP-API' ? '<span class="chip chip-moderate">No review/trend data</span>' : ''}
               <span class="chip chip-neutral">${Fmt.esc(p.category)}</span>
               <span class="chip chip-${p.scoring.verdict.cls}">${p.scoring.verdict.label} opportunity</span>
               ${p.seasonal ? `<span class="chip chip-moderate">${Fmt.esc(p.seasonal)} seasonal</span>` : ''}
@@ -352,7 +370,7 @@
           <div class="stat-trio" style="margin-top:0">
             <div class="stat-mini"><b class="num">${p.sellers}</b><span>Active sellers</span></div>
             <div class="stat-mini"><b class="num">${Fmt.compact(p.reviewsTop10)}</b><span>Avg reviews, top 10</span></div>
-            <div class="stat-mini"><b class="num">★ ${p.rating.toFixed(1)}</b><span>Avg rating</span></div>
+            <div class="stat-mini"><b class="num">${p.rating ? '★ ' + p.rating.toFixed(1) : '—'}</b><span>Avg rating</span></div>
           </div>
           <div class="row mt-12" style="gap:8px">
             ${UI.compMeter(comp)} <span style="font-size:12.5px;font-weight:600">${comp.label} competition</span>

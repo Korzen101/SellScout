@@ -45,7 +45,11 @@
   function competitionScore(p) {
     // Higher = easier to compete
     const sellerEase = 1 - clamp01((p.sellers || 0) / 40);
-    const moatEase = 1 - clamp01(Math.log10((p.reviewsTop10 || 0) + 1) / Math.log10(5000));
+    // Review depth is unknown for some sources (e.g. SP-API exposes no review
+    // data) — treat unknown as neutral rather than as "no competition".
+    const moatEase = p.reviewsTop10 == null
+      ? 0.5
+      : 1 - clamp01(Math.log10(p.reviewsTop10 + 1) / Math.log10(5000));
     let s = 0.55 * moatEase + 0.45 * sellerEase;
     if (p.amazonOnListing) s -= 0.18;             // competing with Amazon retail is brutal
     return clamp01(s);

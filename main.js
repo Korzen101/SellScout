@@ -385,10 +385,23 @@ function trendFromRankHistory(csv) {
   });
 }
 
-async function keepaProduct(asinRaw) {
-  const m = String(asinRaw || '').trim().match(/(?:dp|gp\/product|asin)[\/=]?([A-Z0-9]{10})|^([A-Z0-9]{10})$/i);
+// Accepts a bare ASIN or any Amazon product URL
+function extractAsin(raw) {
+  const m = String(raw || '').trim().match(/(?:dp|gp\/product|asin)[\/=]?([A-Z0-9]{10})|^([A-Z0-9]{10})$/i);
   const asin = (m && (m[1] || m[2]) || '').toUpperCase();
   if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('Enter a valid ASIN (10 characters) or an Amazon product URL.');
+  return asin;
+}
+
+// Stable per-ASIN hue for the product tile
+function asinHue(asin) {
+  let hue = 0;
+  for (const ch of asin) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+  return hue;
+}
+
+async function keepaProduct(asinRaw) {
+  const asin = extractAsin(asinRaw);
 
   const data = await keepaFetch('product', { asin, stats: '90', history: '1', rating: '1' },
     'product-' + asin, 6 * 3600 * 1000);
@@ -408,10 +421,9 @@ async function keepaProduct(asinRaw) {
   const rootCat = p.categoryTree && p.categoryTree[0] ? p.categoryTree[0].name : '';
   const amazonOn = cur[0] != null && cur[0] > 0;
 
-  let hue = 0;
-  for (const ch of asin) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+  const hue = asinHue(asin);
 
-  appendLog('info', 'ASIN analyzed', { asin, tokensLeft: data.tokensLeft, cached: !!data.fromCache });
+  appendLog('info', 'ASIN analyzed via Keepa', { asin, tokensLeft: data.tokensLeft, cached: !!data.fromCache });
 
   return {
     ok: true,
@@ -434,6 +446,107 @@ async function keepaProduct(asinRaw) {
       rating,
       amazonOnListing: amazonOn,
       trend12: trendFromRankHistory(p.csv && p.csv[3]),
+      seasonal: null,
+      flags: [],
+      assumedCost: true,
+      sources: [{
+        marketplace: 'Assumed cost (25% of price)',
+        unitCost: Math.round(price * 25) / 100,
+        shipPerUnit: Math.round(price * 3) / 100,
+        moq: 1, leadDays: 0, rating: 0
+      }]
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// FREE product data via the seller's own SP-API connection.
+// Catalog Items gives title/category/sales-rank/dimensions; Product Pricing
+// gives buy-box price and offer count. No paid subscription — but unlike
+// Keepa there is no review or price/rank history, so trend and review-moat
+// signals are unavailable (reported via `limited`).
+// ---------------------------------------------------------------------------
+
+function gramsFromWeight(w) {
+  if (!w || !(w.value > 0)) return 0;
+  const unit = String(w.unit || '').toLowerCase();
+  if (unit.startsWith('pound') || unit === 'lb' || unit === 'lbs') return w.value * 453.6;
+  if (unit.startsWith('ounce') || unit === 'oz') return w.value * 28.35;
+  if (unit.startsWith('kilogram') || unit === 'kg') return w.value * 1000;
+  if (unit.startsWith('gram') || unit === 'g') return w.value;
+  return w.value * 453.6; // default to pounds, the common SP-API unit
+}
+
+async function spapiCatalogProduct(asinRaw) {
+  const asin = extractAsin(asinRaw);
+  const marketplaceId = readSettings()['spapi.marketplaceId'] || 'ATVPDKIKX0DER';
+
+  const item = await spapiGet('/catalog/2022-04-01/items/' + asin, {
+    marketplaceIds: marketplaceId,
+    includedData: 'attributes,salesRanks,summaries,dimensions'
+  });
+
+  const pick = (arr) => (arr || []).find((x) => x.marketplaceId === marketplaceId) || (arr || [])[0] || null;
+  const summary = pick(item.summaries) || {};
+  const name = summary.itemName || ('ASIN ' + asin);
+  const browse = (summary.browseClassification && summary.browseClassification.displayName) || '';
+
+  // Sales rank → velocity estimate
+  let rank = 0;
+  const sr = pick(item.salesRanks);
+  if (sr) {
+    const entry = (sr.classificationRanks || [])[0] || (sr.displayGroupRanks || [])[0];
+    if (entry && entry.rank > 0) rank = entry.rank;
+  }
+
+  // Package weight → FBA size tier
+  const dim = pick(item.dimensions);
+  const grams = gramsFromWeight(dim && dim.package && dim.package.weight);
+
+  // Competitive pricing (best-effort — pricing scope may not be granted)
+  let price = 0, offers = 1, pricingOk = true;
+  try {
+    const pricing = await spapiGet('/products/pricing/v0/items/' + asin + '/offers', {
+      MarketplaceId: marketplaceId, ItemCondition: 'New'
+    });
+    const s = (pricing.payload && pricing.payload.Summary) || {};
+    offers = s.TotalOfferCount ||
+      ((s.NumberOfOffers || [])[0] && s.NumberOfOffers[0].OfferCount) || 1;
+    const bb = (s.BuyBoxPrices || [])[0];
+    const lp = (s.LowestPrices || [])[0];
+    price = (bb && bb.LandedPrice && bb.LandedPrice.Amount) ||
+            (lp && lp.LandedPrice && lp.LandedPrice.Amount) || 0;
+  } catch (err) {
+    pricingOk = false;
+    appendLog('warn', 'SP-API pricing unavailable', { asin, error: err.message });
+  }
+
+  appendLog('info', 'ASIN analyzed via SP-API', { asin, rank, price, offers });
+
+  return {
+    ok: true,
+    source: 'spapi',
+    limited: true,
+    pricingOk,
+    product: {
+      id: 'live-' + asin,
+      live: true,
+      dataSource: 'SP-API',
+      asin,
+      name: name.length > 90 ? name.slice(0, 87) + '…' : name,
+      category: mapCategory(browse),
+      categoryRaw: browse,
+      emoji: '🛒',
+      hue: asinHue(asin),
+      price,
+      sizeTier: sizeTierFromGrams(grams),
+      fbaFee: null,
+      estMonthlySales: salesFromRank(rank),
+      sellers: offers,
+      reviewsTop10: null,       // not exposed by SP-API → scored as neutral
+      rating: null,             // not exposed by SP-API
+      amazonOnListing: false,   // not reliably derivable
+      trend12: Array(12).fill(100), // no history via SP-API → neutral trend
       seasonal: null,
       flags: [],
       assumedCost: true,
@@ -534,6 +647,16 @@ ipcMain.handle('keepa:product', async (_e, asin) => {
   catch (err) { return { ok: false, error: err.message }; }
 });
 
+ipcMain.handle('spapi:product', async (_e, asin) => {
+  try { return await spapiCatalogProduct(asin); }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+
+// True when SP-API credentials are configured (enables the free data path)
+ipcMain.handle('spapi:configured', () => Boolean(
+  secret('spapi.lwaClientId') && secret('spapi.lwaClientSecret') && secret('spapi.refreshToken')
+));
+
 ipcMain.handle('file:save', async (_e, suggestedName, content, extLabel, ext) => {
   try {
     const res = await dialog.showSaveDialog(win, {
@@ -565,6 +688,14 @@ ipcMain.handle('shell:openExternal', (_e, url) => {
 });
 
 ipcMain.handle('app:version', () => app.getVersion());
+
+ipcMain.handle('update:install', () => {
+  try {
+    require('electron-updater').autoUpdater.quitAndInstall();
+  } catch (e) {
+    appendLog('error', 'quitAndInstall failed', { error: e.message });
+  }
+});
 
 ipcMain.handle('log:write', (_e, level, msg, data) => appendLog(level, msg, data));
 ipcMain.handle('log:read', (_e, maxLines) => ({ ok: true, lines: readLog(maxLines) }));
@@ -610,8 +741,10 @@ function initUpdater() {
       error: (m) => appendLog('error', 'updater: ' + m),
       debug: () => {}
     };
-    autoUpdater.on('update-downloaded', (info) =>
-      appendLog('info', 'Update downloaded — installs on quit', { version: info.version }));
+    autoUpdater.on('update-downloaded', (info) => {
+      appendLog('info', 'Update downloaded — ready to install', { version: info.version });
+      if (win && !win.isDestroyed()) win.webContents.send('update:ready', info.version);
+    });
     autoUpdater.checkForUpdatesAndNotify()
       .catch((e) => appendLog('warn', 'Update check failed', { error: e.message }));
   } catch (e) {

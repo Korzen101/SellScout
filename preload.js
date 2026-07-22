@@ -14,7 +14,9 @@ contextBridge.exposeInMainWorld('sellscout', {
   },
   spapi: {
     test: () => ipcRenderer.invoke('spapi:test'),
-    orders: (days) => ipcRenderer.invoke('spapi:orders', days)
+    orders: (days) => ipcRenderer.invoke('spapi:orders', days),
+    product: (asin) => ipcRenderer.invoke('spapi:product', asin),
+    configured: () => ipcRenderer.invoke('spapi:configured')
   },
   keepa: {
     bestsellers: (categoryId) => ipcRenderer.invoke('keepa:bestsellers', categoryId),
@@ -31,6 +33,10 @@ contextBridge.exposeInMainWorld('sellscout', {
     openFolder: () => ipcRenderer.invoke('log:openFolder')
   },
   exportCsv: (suggestedName, content) => ipcRenderer.invoke('export:csv', suggestedName, content),
+  update: {
+    onReady: (cb) => ipcRenderer.on('update:ready', (_e, version) => cb(version)),
+    install: () => ipcRenderer.invoke('update:install')
+  },
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   version: () => ipcRenderer.invoke('app:version')
 });

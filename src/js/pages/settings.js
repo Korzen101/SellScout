@@ -94,6 +94,16 @@
 
           <div class="set-row">
             <div class="set-info">
+              <div class="set-name">Amazon SP-API catalog <span class="micro">· free</span></div>
+              <div class="set-desc">Your own seller connection doubles as a free product-data source: price,
+                offer count, sales rank and dimensions for any ASIN. No review or price history (Keepa covers that).
+                Used automatically by “Analyze ASIN” when no Keepa key is set.</div>
+            </div>
+            <div class="set-ctl"><button class="btn btn-quiet btn-sm" id="s-gobusiness2">Connect ${Icons.chevR}</button></div>
+          </div>
+
+          <div class="set-row">
+            <div class="set-info">
               <div class="set-name">Keepa API key ${Info.btn('keepa')} <span class="micro">${keepa.set ? '· saved ' + keepa.hint : '· optional'}</span></div>
               <div class="set-desc">Unlocks the “Analyze ASIN” feature and live Amazon catalog data (paid service).
                 Without a key, the catalog uses bundled research data.
@@ -325,11 +335,13 @@
     // --- Misc ---
     el.querySelector('#s-refresh-news').addEventListener('click', () => ctx.refreshNews());
     el.querySelector('#s-gobusiness').addEventListener('click', () => ctx.navigate('business'));
+    const goBiz2 = el.querySelector('#s-gobusiness2');
+    if (goBiz2) goBiz2.addEventListener('click', () => ctx.navigate('business'));
 
     if (window.sellscout) {
       window.sellscout.version().then((v) => {
         const n = el.querySelector('#s-version');
-        if (n) n.textContent = String(v).replace(/\.0$/, '');
+        if (n) n.textContent = String(v).split('.').slice(0, 2).join('.'); // marketing version only
       }).catch(() => {});
     }
   }

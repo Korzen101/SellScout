@@ -251,7 +251,9 @@
 
     if (window.sellscout) {
       window.sellscout.version().then((v) => {
-        document.getElementById('sidebar-version').textContent = 'v' + String(v).replace(/\.0$/, '');
+        // Show marketing version (major.minor) only, so patch bumps that drive
+        // auto-update don't change what the user sees.
+        document.getElementById('sidebar-version').textContent = 'v' + String(v).split('.').slice(0, 2).join('.');
       }).catch(() => {});
     }
 
@@ -276,6 +278,9 @@
         ctx.newsLive = true;
         if (ctx.current === 'dashboard' || ctx.current === 'trendsnews') renderPage(ctx.current);
       });
+      if (window.sellscout.update) {
+        window.sellscout.update.onReady((version) => showUpdateBanner(version));
+      }
     }
 
     // Daily engine: watchlist/pipeline snapshots + notifications
@@ -287,6 +292,22 @@
   // Daily engine — one snapshot per day of every followed product, plus
   // desktop notifications for restock alerts and big score moves.
   // ------------------------------------------------------------------
+  function showUpdateBanner(version) {
+    if (document.getElementById('update-bar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'update-bar';
+    bar.className = 'update-bar';
+    bar.innerHTML = `<span>SellScout ${Fmt.esc(String(version).split('.').slice(0, 2).join('.'))} is ready.</span>
+      <button class="btn btn-primary btn-sm" id="update-restart">Restart to update</button>
+      <button class="icon-btn" id="update-dismiss" title="Later">${Icons.close}</button>`;
+    document.body.appendChild(bar);
+    bar.querySelector('#update-restart').addEventListener('click', () => {
+      if (window.sellscout && window.sellscout.update) window.sellscout.update.install();
+    });
+    bar.querySelector('#update-dismiss').addEventListener('click', () => bar.remove());
+    Log.info('Update ready banner shown', { version });
+  }
+
   function notify(body) {
     if (Store.get('notificationsEnabled') === false) return;
     try {
