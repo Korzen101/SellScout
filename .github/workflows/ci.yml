@@ -30,7 +30,16 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - name: Build installer & publish to GitHub Releases
-        run: npx electron-builder --win --publish always
+      # Build the installer only — do not let electron-builder create the
+      # release (its create-then-upload flow can race and 422). Publishing is
+      # a separate, idempotent step below.
+      - name: Build installer
+        run: npx electron-builder --win --publish never
+      - name: Publish to GitHub Releases
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes "SellScout $tag"
+          gh release upload "$tag" dist/*.exe dist/*.blockmap dist/latest.yml --clobber
