@@ -294,14 +294,14 @@ input[type="range"].slider { flex: 1; accent-color: var(--accent); height: 4px; 
 
 .info-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 17px; height: 17px; padding: 0; margin-left: 3px;
+  width: 21px; height: 21px; padding: 0; margin-left: 4px;
   border: 0; border-radius: 999px; background: transparent;
-  cursor: pointer; vertical-align: -3px;
+  cursor: pointer; vertical-align: -5px;
 }
-.info-btn svg { width: 13px; height: 13px; stroke: var(--ink-3); transition: stroke 0.12s ease; }
+.info-btn svg { width: 16px; height: 16px; stroke: var(--ink-3); transition: stroke 0.12s ease; }
 .info-btn:hover svg { stroke: var(--accent); }
 th .info-btn { vertical-align: -4px; }
-th .info-btn svg { width: 12px; height: 12px; }
+th .info-btn svg { width: 14px; height: 14px; }
 
 /* ---------- Onboarding wizard ---------- */
 
