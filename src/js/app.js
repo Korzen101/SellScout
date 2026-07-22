@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const PAGE_ORDER = ['dashboard', 'finder', 'sourcing', 'trendsnews', 'calculator', 'business', 'settings'];
+  const PAGE_ORDER = ['dashboard', 'finder', 'sourcing', 'trendsnews', 'calculator', 'pipeline', 'business', 'settings'];
   const GROUPS = ['Research', 'Tools', 'Business', 'System'];
 
   // ------------------------------------------------------------------
@@ -58,9 +58,6 @@
       inner.querySelector('#drawer-close').addEventListener('click', UI.closeDrawer);
       if (wire) wire(inner);
       inner.scrollTop = scroll;
-      inner.querySelectorAll('[data-ext]').forEach((n) => {
-        if (n.tagName === 'A') n.addEventListener('click', (e) => { e.preventDefault(); UI.ext(n.dataset.ext); });
-      });
     },
 
     closeDrawer() {
@@ -117,7 +114,7 @@
     toast: UI.toast,
 
     rescore() {
-      ctx.products = Scoring.scoreAll(DemoData.products);
+      ctx.products = Scoring.scoreAll([...DemoData.products, ...(Store.get('analyzed') || [])]);
       renderPage(ctx.current);
     },
 
@@ -201,13 +198,15 @@
 
     await Store.init();
     Fmt.setCurrency(Store.get('currency'));
-    ctx.products = Scoring.scoreAll(DemoData.products);
+    ctx.products = Scoring.scoreAll([...DemoData.products, ...(Store.get('analyzed') || [])]);
     Log.info('Renderer started', { currency: Fmt.currency(), products: ctx.products.length });
 
     buildNav();
 
-    // Global ⓘ explainer delegation — any element with data-info opens its entry
+    // Global delegation: ⓘ explainers and external links work from any page
     document.addEventListener('click', (e) => {
+      const ext = e.target.closest('[data-ext]');
+      if (ext) { e.preventDefault(); UI.ext(ext.dataset.ext); return; }
       const b = e.target.closest('[data-info]');
       if (!b) return;
       const d = Info.DICT[b.dataset.info];
@@ -262,7 +261,8 @@
     // First-run setup
     Onboarding.maybeShow(ctx);
 
-    // Quietly try live news once at startup (desktop only)
+    // Quietly try live news once at startup (desktop only), and accept
+    // background pushes from the main-process refresh loop
     if (window.sellscout) {
       window.sellscout.news.fetch().then((res) => {
         if (res.ok && res.items && res.items.length) {
@@ -271,7 +271,74 @@
           if (ctx.current === 'dashboard' || ctx.current === 'trendsnews') renderPage(ctx.current);
         }
       }).catch(() => {});
+      window.sellscout.news.onUpdate((items) => {
+        ctx.news.items = items;
+        ctx.newsLive = true;
+        if (ctx.current === 'dashboard' || ctx.current === 'trendsnews') renderPage(ctx.current);
+      });
     }
+
+    // Daily engine: watchlist/pipeline snapshots + notifications
+    runDailyTasks();
+    setInterval(runDailyTasks, 60 * 60 * 1000);
+  }
+
+  // ------------------------------------------------------------------
+  // Daily engine — one snapshot per day of every followed product, plus
+  // desktop notifications for restock alerts and big score moves.
+  // ------------------------------------------------------------------
+  function notify(body) {
+    if (Store.get('notificationsEnabled') === false) return;
+    try {
+      if ('Notification' in window && Notification.permission !== 'denied') {
+        new Notification('SellScout', { body, silent: true });
+      }
+    } catch { /* notifications are best-effort */ }
+  }
+
+  function runDailyTasks() {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Snapshots: once per day, but keep trying through the day until
+    // something is actually followed (watchlist, pipeline, or analyzed).
+    const snaps = (Store.get('snapshots') || []).slice(-89);
+    const hasToday = snaps.length > 0 && snaps[snaps.length - 1].date === today;
+    if (!hasToday) {
+      const followed = new Set([
+        ...(Store.get('watchlist') || []),
+        ...Object.keys((Store.get('pipeline') || {})),
+        ...(Store.get('analyzed') || []).map((p) => p.id)
+      ]);
+      const prev = snaps[snaps.length - 1];
+      const items = ctx.products
+        .filter((p) => followed.has(p.id))
+        .map((p) => ({ id: p.id, score: p.scoring.total, price: p.price, roi: Math.round(p.best.econ.roiPct) }));
+      if (items.length) {
+        snaps.push({ date: today, items });
+        Store.set('snapshots', snaps);
+        Log.info('Daily snapshot saved', { products: items.length });
+
+        // Big score moves vs. the previous snapshot
+        if (prev) {
+          for (const it of items) {
+            const was = (prev.items || []).find((x) => x.id === it.id);
+            if (was && Math.abs(it.score - was.score) >= 5) {
+              const p = ctx.products.find((x) => x.id === it.id);
+              notify(`${p ? p.name : it.id}: opportunity score ${was.score} → ${it.score}`);
+            }
+          }
+        }
+      }
+    }
+
+    // Notifications digest: strictly once per day
+    if (Store.get('lastDailyRun') === today) return;
+    const lowStock = DemoData.business.skus.filter((s) => s.stock / s.daily < 14);
+    if (lowStock.length) {
+      notify(lowStock.length + ' SKU' + (lowStock.length > 1 ? 's' : '') +
+        ' under 14 days of stock — check My Business → Inventory health');
+    }
+    Store.set('lastDailyRun', today);
   }
 
   document.addEventListener('DOMContentLoaded', boot);

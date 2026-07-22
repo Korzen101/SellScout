@@ -2,10 +2,12 @@
 
 Desktop app for Amazon resellers: finds products with the highest likelihood of
 being profitable by scoring **demand, trend momentum, competition, margin and
-risk**, compares **sourcing costs across marketplaces** (Alibaba, AliExpress,
-DHgate, retail clearance, eBay lots, Faire), models **full FBA unit economics**,
-tracks **market news**, and connects to your **Amazon Seller account** for
-business insights.
+risk**, analyzes **any live ASIN** (via Keepa), compares **sourcing costs across
+marketplaces** (Alibaba, AliExpress, DHgate, retail clearance, eBay lots, Faire),
+models **full FBA unit economics**, tracks products through a **pipeline**
+(idea → live) with supplier quotes, imports your **Seller Central transaction
+reports** for actual P&L, follows **market news**, and connects to your
+**Amazon Seller account** for business insights.
 
 ## Run
 
@@ -19,9 +21,13 @@ Useful scripts:
 | Command | What it does |
 |---|---|
 | `npm start` | Launch the desktop app |
+| `npm test` | Unit tests for the fee model, scoring engine and report parser |
 | `npm run smoke` | Boot + auto-quit sanity check (CI-friendly) |
 | `npm run preview` | Serve the UI at http://localhost:5173 for browser preview (demo data only) |
-| `npm run dist` | Build a Windows installer (requires `npm i -D electron-builder` first) |
+| `npm run dist` | Build the Windows installer (electron-builder) |
+
+Releases: pushing a `v*` tag runs CI (tests → Windows installer → GitHub
+Release). Installed builds auto-update from Releases via electron-updater.
 
 ## Pages
 
@@ -35,9 +41,14 @@ Useful scripts:
   live RSS market news with opportunity/risk tagging
 - **Profit Calculator** — complete FBA workbench: referral %, size-tier FBA fees,
   duty, ads (TACoS), returns, storage; monthly projection + sensitivity table
+- **Pipeline** — kanban board from Idea to Live; per-product notes and supplier
+  quotes attach in the product drawer
 - **My Business** — connect your Amazon Seller account via SP-API; revenue,
-  profit, orders, and inventory-cover dashboard (simulated until connected)
-- **Settings** — API keys, economics assumptions, data-source info
+  profit, orders, and inventory-cover dashboard (simulated until connected).
+  Import a Seller Central **transaction report CSV** + per-SKU COGS for actual
+  P&L — no API needed
+- **Settings** — API keys (with links), currency, notifications, backup/restore,
+  activity log, economics assumptions (versioned fee schedule)
 
 ## Live data — what's real out of the box
 

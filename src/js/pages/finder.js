@@ -48,7 +48,11 @@
         <button class="btn btn-sm ${state.watchOnly ? 'btn-primary' : 'btn-quiet'}" id="f-watch">${Icons.star} Watchlist</button>
         <button class="btn btn-quiet btn-sm" id="f-how">${Icons.info} How scoring works</button>
         <button class="btn btn-quiet btn-sm" id="f-export">${Icons.export} Export CSV</button>
-        <span class="finder-count">${list.length} product${list.length === 1 ? '' : 's'}</span>
+        <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto">
+          <input class="field" id="f-asin" placeholder="ASIN or Amazon URL…" style="width:170px" spellcheck="false">
+          <button class="btn btn-tint btn-sm" id="f-analyze">${Icons.spark} Analyze</button>
+        </span>
+        <span class="finder-count" style="margin-left:0">${list.length} product${list.length === 1 ? '' : 's'}</span>
       </div>
 
       <div class="card section-gap" style="padding:6px 8px">
@@ -64,7 +68,8 @@
               const comp = Scoring.competitionLevel(p);
               return `<tr class="rowlink" data-open="${p.id}">
                 <td><div class="cell-product">${UI.ptile(p)}
-                  <div><div class="p-name">${Fmt.esc(p.name)}</div><div class="p-cat">${Fmt.esc(p.category)}</div></div>
+                  <div><div class="p-name">${Fmt.esc(p.name)}${p.live ? ' <span class="chip chip-opp" style="vertical-align:1px">Live</span>' : ''}</div>
+                  <div class="p-cat">${Fmt.esc(p.category)}</div></div>
                 </div></td>
                 <td><div class="scorecell">${Charts.scoreRing(p.scoring.total, { size: 34, thickness: 4 })}
                   <span class="chip chip-${p.scoring.verdict.cls}">${p.scoring.verdict.label}</span></div></td>
@@ -93,8 +98,39 @@
     el.querySelector('#f-watch').addEventListener('click', () => { state.watchOnly = !state.watchOnly; rerender(); });
     el.querySelector('#f-how').addEventListener('click', showHow);
     el.querySelector('#f-export').addEventListener('click', () => exportCsv(filtered(ctx), ctx));
+    const asinInput = el.querySelector('#f-asin');
+    const analyze = () => analyzeAsin(asinInput.value, ctx, el.querySelector('#f-analyze'));
+    el.querySelector('#f-analyze').addEventListener('click', analyze);
+    asinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') analyze(); });
     el.querySelectorAll('[data-open]').forEach((n) =>
       n.addEventListener('click', () => ctx.openProduct(n.dataset.open)));
+  }
+
+  async function analyzeAsin(input, ctx, btn) {
+    const raw = (input || '').trim();
+    if (!raw) { ctx.toast('Paste an ASIN or Amazon product URL first'); return; }
+    if (!window.sellscout) { ctx.toast('Live analysis needs the desktop app (npm start)'); return; }
+    if (!Store.secretState('keepaApiKey').set) {
+      UI.modal(`<div class="card-title" style="font-size:16px">Keepa key needed</div>
+        <p class="card-sub" style="margin-top:8px;line-height:1.55">Live product analysis pulls price, rank and review
+        data from Keepa. Add an API key in Settings → Data sources.
+        <a class="ext" data-ext="https://keepa.com/#!api">Get a key at keepa.com ${'↗'}</a></p>`);
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Analyzing…';
+    try {
+      const res = await window.sellscout.keepa.product(raw);
+      if (!res.ok) { ctx.toast(res.error || 'Analysis failed'); return; }
+      const analyzed = (Store.get('analyzed') || []).filter((p) => p.id !== res.product.id);
+      analyzed.unshift(res.product);
+      Store.set('analyzed', analyzed.slice(0, 40));
+      ctx.rescore();
+      ctx.toast('Analyzed — ' + (res.tokensLeft != null ? res.tokensLeft + ' Keepa tokens left' : 'added to catalog'));
+      ctx.openProduct(res.product.id);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = Icons.spark + ' Analyze';
+    }
   }
 
   async function exportCsv(list, ctx) {
@@ -184,6 +220,67 @@
       </div>`;
   }
 
+  function pipelineSection(p) {
+    const pl = Pipeline.get(p.id);
+    if (!pl) {
+      return `<div class="d-section">
+        <div class="d-section-title">Pipeline</div>
+        <button class="btn btn-quiet btn-sm" id="d-track">${Icons.flag} Track in pipeline</button>
+        <span class="micro" style="margin-left:8px">Stages, notes and supplier quotes live here once tracked.</span>
+      </div>`;
+    }
+    return `<div class="d-section">
+      <div class="d-section-title">Pipeline · ${Fmt.esc(pl.stage)}</div>
+      <div class="row" style="gap:8px">
+        <select class="field" id="d-stage" style="width:150px">
+          ${Pipeline.STAGES.map((s) => `<option ${s === pl.stage ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <button class="btn btn-quiet btn-sm" id="d-untrack" style="color:var(--bad-text)">Untrack</button>
+      </div>
+      <textarea class="field mt-12" id="d-notes" rows="2" placeholder="Notes — supplier conversations, sample feedback, launch plans…">${Fmt.esc(pl.notes)}</textarea>
+      <div class="mt-12">
+        <div class="micro" style="font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px">Supplier quotes</div>
+        ${pl.quotes.map((q, i) => `
+          <div class="quote-row">
+            <b style="flex:1">${Fmt.esc(q.supplier)}</b>
+            <span class="num">${Fmt.money(q.price)}/unit</span>
+            <span class="micro num">MOQ ${q.moq || '—'}</span>
+            <span class="micro num">${q.leadDays || '—'}d</span>
+            <button class="icon-btn" data-delquote="${i}" style="width:22px;height:22px">${Icons.close}</button>
+          </div>`).join('') || '<div class="micro">No quotes yet.</div>'}
+        <div class="quote-add">
+          <input class="field" id="q-supplier" placeholder="Supplier">
+          <input class="field num" id="q-price" type="number" step="0.01" min="0" placeholder="$/unit">
+          <input class="field num" id="q-moq" type="number" min="0" placeholder="MOQ">
+          <input class="field num" id="q-lead" type="number" min="0" placeholder="Lead d">
+          <button class="btn btn-tint btn-sm" id="q-add">Add</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function historySection(p) {
+    const snaps = (Store.get('snapshots') || [])
+      .map((s) => ({ date: s.date, item: (s.items || []).find((i) => i.id === p.id) }))
+      .filter((x) => x.item);
+    if (snaps.length < 2) {
+      return `<div class="d-section">
+        <div class="d-section-title">Score history</div>
+        <div class="micro">History builds one point per day while this product is on your watchlist or in the pipeline.</div>
+      </div>`;
+    }
+    const scores = snaps.map((x) => x.item.score);
+    const first = snaps[0], last = snaps[snaps.length - 1];
+    return `<div class="d-section">
+      <div class="d-section-title">Score history · ${snaps.length} days</div>
+      <div class="row" style="gap:14px">
+        ${Charts.sparkline(scores, { w: 180, h: 34 })}
+        <span style="font-size:12.5px">${first.item.score} <span class="muted">(${first.date})</span>
+          → <b>${last.item.score}</b> <span class="muted">(${last.date})</span></span>
+      </div>
+    </div>`;
+  }
+
   function open(p, ctx) {
     let srcIdx = p.sources.indexOf(p.best.source);
     if (srcIdx < 0) srcIdx = 0;
@@ -199,6 +296,7 @@
           <div class="d-head-main">
             <div class="d-title">${Fmt.esc(p.name)}</div>
             <div class="d-chips">
+              ${p.live ? '<span class="chip chip-opp">Live · amazon.com</span>' : ''}
               <span class="chip chip-neutral">${Fmt.esc(p.category)}</span>
               <span class="chip chip-${p.scoring.verdict.cls}">${p.scoring.verdict.label} opportunity</span>
               ${p.seasonal ? `<span class="chip chip-moderate">${Fmt.esc(p.seasonal)} seasonal</span>` : ''}
@@ -228,6 +326,8 @@
 
         <div class="d-section">
           <div class="d-section-title">Sourcing options ${Info.btn('landed')}</div>
+          ${p.assumedCost ? `<div class="micro" style="margin:-4px 0 8px">Live listing — the unit cost below is an
+            assumption (25% of price). Get real quotes and add them under Pipeline below.</div>` : ''}
           ${p.sources.map((s, i) => {
             const e = Fees.forProduct(p, s);
             return `<div class="src-option ${i === srcIdx ? 'sel' : ''}" data-src="${i}">
@@ -269,13 +369,19 @@
           }).join('')}
         </div>` : ''}
 
+        ${pipelineSection(p)}
+
+        ${historySection(p)}
+
         <div class="d-section">
           <div class="d-section-title">Research links</div>
           <div class="row" style="flex-wrap:wrap;gap:8px">
+            ${p.asin ? `<button class="btn btn-quiet btn-sm" data-ext="https://www.amazon.com/dp/${p.asin}">${Icons.external} Open listing</button>` : ''}
             <button class="btn btn-quiet btn-sm" data-ext="https://www.amazon.com/s?k=${encodeURIComponent(p.name)}">${Icons.external} Amazon results</button>
             <button class="btn btn-quiet btn-sm" data-ext="https://www.alibaba.com/trade/search?SearchText=${encodeURIComponent(p.name)}">${Icons.external} Alibaba suppliers</button>
             <button class="btn btn-quiet btn-sm" data-ext="https://www.aliexpress.com/w/wholesale-${encodeURIComponent(p.name.replace(/\s+/g, '-'))}.html">${Icons.external} AliExpress</button>
             <button class="btn ${watched ? 'btn-primary' : 'btn-quiet'} btn-sm" id="d-watch">${Icons.star} ${watched ? 'Watching' : 'Add to watchlist'}</button>
+            ${p.live ? `<button class="btn btn-quiet btn-sm" id="d-removelive" style="color:var(--bad-text)">Remove from catalog</button>` : ''}
           </div>
         </div>
       `;
@@ -284,14 +390,62 @@
     const wire = (root) => {
       root.querySelectorAll('[data-src]').forEach((n) =>
         n.addEventListener('click', () => { srcIdx = +n.dataset.src; UI.drawerContent(html(), wire); }));
-      root.querySelectorAll('[data-ext]').forEach((n) =>
-        n.addEventListener('click', () => UI.ext(n.dataset.ext)));
       const w = root.querySelector('#d-watch');
       if (w) w.addEventListener('click', () => {
         const on = Store.toggleWatch(p.id);
         ctx.toast(on ? 'Added to watchlist' : 'Removed from watchlist');
         UI.drawerContent(html(), wire);
       });
+      // Pipeline controls
+      const rerenderDrawer = () => UI.drawerContent(html(), wire);
+      const track = root.querySelector('#d-track');
+      if (track) track.addEventListener('click', () => {
+        Pipeline.set(p.id, {});
+        Log.info('Product tracked in pipeline', { id: p.id });
+        ctx.toast('Tracking in pipeline');
+        rerenderDrawer();
+      });
+      const untrack = root.querySelector('#d-untrack');
+      if (untrack) untrack.addEventListener('click', () => {
+        Pipeline.remove(p.id);
+        ctx.toast('Removed from pipeline');
+        rerenderDrawer();
+      });
+      const stageSel = root.querySelector('#d-stage');
+      if (stageSel) stageSel.addEventListener('change', () => {
+        Pipeline.set(p.id, { stage: stageSel.value });
+        rerenderDrawer();
+      });
+      const notes = root.querySelector('#d-notes');
+      if (notes) notes.addEventListener('change', () => Pipeline.set(p.id, { notes: notes.value }));
+      const qAdd = root.querySelector('#q-add');
+      if (qAdd) qAdd.addEventListener('click', () => {
+        const v = (id) => root.querySelector(id).value.trim();
+        if (!v('#q-supplier') || !v('#q-price')) { ctx.toast('Supplier and price are required'); return; }
+        const pl = Pipeline.get(p.id);
+        Pipeline.set(p.id, {
+          quotes: [...pl.quotes, {
+            supplier: v('#q-supplier'), price: +v('#q-price'),
+            moq: +v('#q-moq') || 0, leadDays: +v('#q-lead') || 0, date: Date.now()
+          }]
+        });
+        rerenderDrawer();
+      });
+      root.querySelectorAll('[data-delquote]').forEach((n) =>
+        n.addEventListener('click', () => {
+          const pl = Pipeline.get(p.id);
+          Pipeline.set(p.id, { quotes: pl.quotes.filter((_, i) => i !== +n.dataset.delquote) });
+          rerenderDrawer();
+        }));
+      const removeLive = root.querySelector('#d-removelive');
+      if (removeLive) removeLive.addEventListener('click', () => {
+        Store.set('analyzed', (Store.get('analyzed') || []).filter((x) => x.id !== p.id));
+        Pipeline.remove(p.id);
+        UI.closeDrawer();
+        ctx.rescore();
+        ctx.toast('Removed analyzed product');
+      });
+
       const c = root.querySelector('#d-calc');
       if (c) c.addEventListener('click', () => {
         const s = p.sources[srcIdx];

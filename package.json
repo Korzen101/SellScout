@@ -1,7 +1,7 @@
 {
   "name": "sellscout",
   "productName": "SellScout",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Product research, sourcing, and profit analytics for Amazon sellers",
   "main": "main.js",
   "author": "Chris Korzen",
@@ -10,10 +10,12 @@
     "start": "electron .",
     "smoke": "electron . --smoke",
     "preview": "node tools/preview-server.js",
-    "dist": "electron-builder"
+    "test": "node --test tests/fees.test.js tests/scoring.test.js tests/actuals.test.js",
+    "dist": "electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.korzen.sellscout",
@@ -31,6 +33,15 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Korzen101",
+      "repo": "SellScout",
+      "releaseType": "release"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

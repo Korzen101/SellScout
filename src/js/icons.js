@@ -9,7 +9,7 @@
   }
 
   window.Icons = {
-    logo: I('<path d="M2.8 17.5L7 11l2.5 3.5L12 7.5l2.5 7L17 11l4.2 6.5z" stroke-linejoin="round"/>'),
+    logo: I('<path d="M2.5 19L7 9.5l2.4 4.6L12 4l2.6 9.9L17 9.2 21.5 19z" stroke-linejoin="round"/>'),
     dashboard: I('<rect x="3.5" y="3.5" width="7.4" height="7.4" rx="2"/><rect x="13.1" y="3.5" width="7.4" height="7.4" rx="2"/><rect x="3.5" y="13.1" width="7.4" height="7.4" rx="2"/><rect x="13.1" y="13.1" width="7.4" height="7.4" rx="2"/>'),
     finder: I('<circle cx="11" cy="11" r="6.5"/><path d="M20.5 20.5l-4.9-4.9"/>'),
     sourcing: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.3 3.9 5.2 3.9 8.5s-1.3 6.2-3.9 8.5c-2.6-2.3-3.9-5.2-3.9-8.5s1.3-6.2 3.9-8.5z"/>'),

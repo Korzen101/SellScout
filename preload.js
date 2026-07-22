@@ -9,14 +9,20 @@ contextBridge.exposeInMainWorld('sellscout', {
     set: (key, value) => ipcRenderer.invoke('store:set', key, value)
   },
   news: {
-    fetch: () => ipcRenderer.invoke('news:fetch')
+    fetch: () => ipcRenderer.invoke('news:fetch'),
+    onUpdate: (cb) => ipcRenderer.on('news:update', (_e, items) => cb(items))
   },
   spapi: {
     test: () => ipcRenderer.invoke('spapi:test'),
     orders: (days) => ipcRenderer.invoke('spapi:orders', days)
   },
   keepa: {
-    bestsellers: (categoryId) => ipcRenderer.invoke('keepa:bestsellers', categoryId)
+    bestsellers: (categoryId) => ipcRenderer.invoke('keepa:bestsellers', categoryId),
+    product: (asin) => ipcRenderer.invoke('keepa:product', asin)
+  },
+  file: {
+    save: (name, content, extLabel, ext) => ipcRenderer.invoke('file:save', name, content, extLabel, ext),
+    openText: (extLabel, exts) => ipcRenderer.invoke('file:openText', extLabel, exts)
   },
   log: {
     write: (level, msg, data) => ipcRenderer.invoke('log:write', level, msg, data),

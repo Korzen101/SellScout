@@ -5,7 +5,8 @@
   const state = {
     name: '', price: 24.99, category: 'Home & Kitchen', sizeTier: 'large-std-1',
     fbaFee: null, unitCost: 5.5, shipPerUnit: 1.5, dutyPct: 0,
-    adsPct: null, returnRatePct: null, storageMonths: null, monthlyUnits: 300
+    adsPct: null, returnRatePct: null, storageMonths: null, monthlyUnits: 300,
+    peak: false
   };
 
   function prefill(params) {
@@ -26,7 +27,8 @@
       dutyPct: state.dutyPct,
       adsPct: state.adsPct != null ? state.adsPct : Store.get('adsPctOfPrice'),
       returnRatePct: state.returnRatePct != null ? state.returnRatePct : Store.get('returnRatePct'),
-      storageMonths: state.storageMonths != null ? state.storageMonths : Store.get('storageMonths')
+      storageMonths: state.storageMonths != null ? state.storageMonths : Store.get('storageMonths'),
+      peakStorage: state.peak
     });
   }
 
@@ -53,7 +55,8 @@
       unitCost: state.unitCost * (1 + dCost), shipPerUnit: state.shipPerUnit, dutyPct: state.dutyPct,
       adsPct: state.adsPct != null ? state.adsPct : Store.get('adsPctOfPrice'),
       returnRatePct: state.returnRatePct != null ? state.returnRatePct : Store.get('returnRatePct'),
-      storageMonths: state.storageMonths != null ? state.storageMonths : Store.get('storageMonths')
+      storageMonths: state.storageMonths != null ? state.storageMonths : Store.get('storageMonths'),
+      peakStorage: state.peak
     }).profit;
 
     const F = (id, label, value, attrs, hint) => `
@@ -68,7 +71,7 @@
         <div class="card">
           <div class="card-head"><div>
             <div class="card-title">Inputs</div>
-            <div class="card-sub">${state.name ? 'Prefilled from “' + Fmt.esc(state.name) + '”' : 'Model any product’s unit economics'}</div>
+            <div class="card-sub">${state.name ? 'Prefilled from “' + Fmt.esc(state.name) + '”' : 'Model any product’s unit economics'} · ${Fees.SCHEDULE.label}</div>
           </div></div>
           <div class="calc-form">
             ${F('price', 'Sale price (' + Fmt.sym() + ')', disp(state.price), 'step="0.01" min="0"')}
@@ -94,6 +97,10 @@
             ${F('adsPct', 'Advertising (% of price) ' + Info.btn('tacos'), state.adsPct != null ? state.adsPct : Store.get('adsPctOfPrice'), 'step="0.5" min="0"', 'TACoS — total ad cost of sales')}
             ${F('returnRatePct', 'Return rate (%) ' + Info.btn('returnRate'), state.returnRatePct != null ? state.returnRatePct : Store.get('returnRatePct'), 'step="0.5" min="0"')}
             ${F('storageMonths', 'Months in storage ' + Info.btn('storageMonths'), state.storageMonths != null ? state.storageMonths : Store.get('storageMonths'), 'step="0.5" min="0"')}
+            <div class="field-row span-2" style="flex-direction:row;align-items:center;gap:10px;margin-top:2px">
+              <label class="switch"><input type="checkbox" id="c-peak" ${state.peak ? 'checked' : ''}><span class="knob"></span></label>
+              <span style="font-size:12.5px;font-weight:600">Q4 peak storage (Oct–Dec, ${Fees.SCHEDULE.peakStorageMultiplier}× rate)</span>
+            </div>
           </div>
         </div>
 
@@ -173,6 +180,7 @@
         render(el, ctx);
       });
     });
+    el.querySelector('#c-peak').addEventListener('change', (e) => { state.peak = e.target.checked; render(el, ctx); });
     const units = el.querySelector('#c-units');
     units.addEventListener('input', () => {
       state.monthlyUnits = +units.value;

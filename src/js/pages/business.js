@@ -93,6 +93,8 @@
         </div>
       </div>
 
+      ${actualsCard()}
+
       <div class="grid grid-2 section-gap">
         <div class="card" style="padding:14px 8px 8px">
           <div class="card-head" style="padding:0 12px"><div>
@@ -148,7 +150,128 @@
     `;
 
     wireConnect(el, ctx);
+
+    // Actuals wiring
+    const aImport = el.querySelector('#a-import');
+    if (aImport) aImport.addEventListener('click', () => importActuals(ctx, el));
+    const aClear = el.querySelector('#a-clear');
+    if (aClear) aClear.addEventListener('click', () => {
+      Store.set('actuals', null); Store.set('cogs', {});
+      ctx.toast('Imported data cleared');
+      render(el, ctx);
+    });
+    el.querySelectorAll('[data-cogs]').forEach((input) =>
+      input.addEventListener('change', () => {
+        const cogs = { ...(Store.get('cogs') || {}) };
+        if (input.value === '') delete cogs[input.dataset.cogs];
+        else cogs[input.dataset.cogs] = +input.value;
+        Store.set('cogs', cogs);
+        render(el, ctx);
+      }));
+
     Charts.activate(el);
+  }
+
+  // ------------------------------------------------------------------
+  // Actuals — imported Seller Central transaction report + COGS
+  // ------------------------------------------------------------------
+
+  function actualsCard() {
+    const a = Store.get('actuals');
+    if (!a) {
+      return `<div class="card section-gap">
+        <div class="card-head"><div>
+          <div class="card-title">Actual P&L — import your transaction report</div>
+          <div class="card-sub" style="max-width:640px">Replace estimates with your real numbers, no API needed:
+          in Seller Central go to <b>Payments → Reports repository</b>, request a <b>Transaction report</b> (CSV),
+          then import it here. Add your cost per unit to see true profit per SKU.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="a-import">${Icons.doc} Import CSV</button></div>
+      </div>`;
+    }
+
+    const cogs = Store.get('cogs') || {};
+    const fmtD = (ts) => ts ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '?';
+    let trueProfit = 0, cogsKnown = true;
+    for (const s of a.perSku) {
+      if (cogs[s.sku] != null) trueProfit += s.net - s.units * cogs[s.sku];
+      else cogsKnown = false;
+    }
+
+    return `<div class="card section-gap">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Actual P&L <span class="chip chip-opp" style="vertical-align:2px">Imported</span></div>
+          <div class="card-sub">${Fmt.esc(a.fileName)} · ${fmtD(a.period.from)} – ${fmtD(a.period.to)} ·
+            ${a.orders} orders · ${a.rows} rows</div>
+        </div>
+        <div class="row">
+          <button class="btn btn-quiet btn-sm" id="a-import">${Icons.refresh} Re-import</button>
+          <button class="btn btn-quiet btn-sm" id="a-clear">Clear</button>
+        </div>
+      </div>
+      <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-mini"><b class="num">${Fmt.money(a.totals.sales, 0)}</b><span>Product sales</span></div>
+        <div class="stat-mini"><b class="num">${Fmt.money(a.totals.sellingFees + a.totals.fbaFees + a.totals.otherFees, 0)}</b><span>Amazon fees</span></div>
+        <div class="stat-mini"><b class="num">${Fmt.money(a.totals.refunds, 0)}</b><span>Refunds</span></div>
+        <div class="stat-mini"><b class="num" style="color:${a.totals.net >= 0 ? 'var(--good-text)' : 'var(--bad-text)'}">${Fmt.money(a.totals.net, 0)}</b><span>Net proceeds</span></div>
+      </div>
+      <div class="table-wrap mt-16"><table class="table">
+        <thead><tr><th>SKU</th><th class="th-r">Units</th><th class="th-r">Sales</th><th class="th-r">Fees</th>
+          <th class="th-r">Net</th><th class="th-r">COGS/unit</th><th class="th-r">True profit</th></tr></thead>
+        <tbody>
+          ${a.perSku.slice(0, 12).map((s) => {
+            const c = cogs[s.sku];
+            const tp = c != null ? s.net - s.units * c : null;
+            return `<tr>
+              <td style="font-weight:600">${Fmt.esc(s.sku)}</td>
+              <td class="td-r num">${s.units}</td>
+              <td class="td-r num">${Fmt.money(s.sales)}</td>
+              <td class="td-r num">${Fmt.money(s.fees)}</td>
+              <td class="td-r num">${Fmt.money(s.net)}</td>
+              <td class="td-r"><input class="field num" data-cogs="${Fmt.esc(s.sku)}" type="number" step="0.01" min="0"
+                value="${c != null ? c : ''}" placeholder="—" style="width:76px;height:26px;text-align:right"></td>
+              <td class="td-r num" style="font-weight:650;color:${tp == null ? 'var(--ink-3)' : tp >= 0 ? 'var(--good-text)' : 'var(--bad-text)'}">${tp == null ? 'add COGS' : Fmt.money(tp)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+      <div class="spread mt-12">
+        <span class="micro">Net proceeds already include Amazon fees; true profit subtracts your product cost.</span>
+        <span style="font-size:13px">Total true profit${cogsKnown ? '' : ' (COGS incomplete)'}:
+          <b class="num" style="color:${trueProfit >= 0 ? 'var(--good-text)' : 'var(--bad-text)'}">${Fmt.money(trueProfit)}</b></span>
+      </div>
+    </div>`;
+  }
+
+  async function importActuals(ctx, el) {
+    let name, content;
+    if (window.sellscout) {
+      const res = await window.sellscout.file.openText('Amazon transaction report', ['csv', 'txt']);
+      if (!res.ok) { if (!res.canceled) ctx.toast(res.error || 'Could not open file'); return; }
+      name = res.name; content = res.content;
+      finishImport(ctx, el, name, content);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.csv,.txt';
+      input.onchange = () => {
+        const f = input.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => finishImport(ctx, el, f.name, reader.result);
+        reader.readAsText(f);
+      };
+      input.click();
+    }
+  }
+
+  function finishImport(ctx, el, name, content) {
+    const parsed = Actuals.parse(content);
+    if (!parsed.ok) { ctx.toast(parsed.error); Log.warn('Actuals import rejected', { file: name, error: parsed.error }); return; }
+    Store.set('actuals', { ...parsed, fileName: name, importedAt: Date.now() });
+    Log.info('Actuals imported', { file: name, rows: parsed.rows, orders: parsed.orders });
+    ctx.toast('Imported ' + parsed.rows + ' transactions');
+    render(el, ctx);
   }
 
   function renderConnect(creds, hasCreds) {
@@ -222,6 +345,10 @@
             <li>Under the app’s <b>Authorize</b> action, generate a <b>Refresh Token</b> for your own seller account.</li>
             <li>Paste all three here — SellScout exchanges them directly with Amazon to read your orders and inventory. Nothing is sent anywhere else.</li>
           </ol>
+          <div class="row mt-12" style="gap:8px">
+            <button class="btn btn-quiet btn-sm" data-ext="https://sellercentral.amazon.com/sellingpartner/developerconsole">${Icons.external} Developer Console</button>
+            <button class="btn btn-quiet btn-sm" data-ext="https://developer-docs.amazon.com/sp-api/">${Icons.external} SP-API docs</button>
+          </div>
         </details>
       </div>
     </div>`;

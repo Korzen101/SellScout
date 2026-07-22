@@ -46,6 +46,28 @@
 
           <div class="set-row">
             <div class="set-info">
+              <div class="set-name">Desktop notifications</div>
+              <div class="set-desc">Daily alerts for restock warnings and big opportunity-score moves on followed products.</div>
+            </div>
+            <div class="set-ctl">
+              <label class="switch"><input type="checkbox" id="s-notify" ${Store.get('notificationsEnabled') === false ? '' : 'checked'}><span class="knob"></span></label>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-name">Backup & restore</div>
+              <div class="set-desc">Export preferences, watchlist, pipeline, snapshots and imported P&L to a JSON file
+              (API keys and Amazon credentials are never included). Import merges a backup back in.</div>
+            </div>
+            <div class="set-ctl">
+              <button class="btn btn-quiet btn-sm" id="s-backup">${Icons.export} Export</button>
+              <button class="btn btn-quiet btn-sm" id="s-restore">${Icons.doc} Import</button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div class="set-info">
               <div class="set-name">Reset to defaults</div>
               <div class="set-desc">Restores currency, data mode and all economics assumptions. Keeps your API keys, watchlist and Amazon connection.</div>
             </div>
@@ -73,8 +95,9 @@
           <div class="set-row">
             <div class="set-info">
               <div class="set-name">Keepa API key ${Info.btn('keepa')} <span class="micro">${keepa.set ? '· saved ' + keepa.hint : '· optional'}</span></div>
-              <div class="set-desc">Unlocks live Amazon best-seller and price-history data (paid service, keepa.com).
-                Without a key, the catalog uses bundled research data.</div>
+              <div class="set-desc">Unlocks the “Analyze ASIN” feature and live Amazon catalog data (paid service).
+                Without a key, the catalog uses bundled research data.
+                <a class="ext" data-ext="https://keepa.com/#!api">Get a key at keepa.com ↗</a></div>
             </div>
             <div class="set-ctl">
               <input class="field" id="s-keepa" type="password" placeholder="${keepa.set ? 'Replace key…' : 'Paste API key…'}" autocomplete="off">
@@ -85,7 +108,8 @@
           <div class="set-row">
             <div class="set-info">
               <div class="set-name">Rainforest API key <span class="micro">${rainforest.set ? '· saved ' + rainforest.hint : '· optional'}</span></div>
-              <div class="set-desc">Alternative live product-data provider (rainforestapi.com) for search results and listings.</div>
+              <div class="set-desc">Alternative live product-data provider for search results and listings.
+                <a class="ext" data-ext="https://www.rainforestapi.com/">Get a key at rainforestapi.com ↗</a></div>
             </div>
             <div class="set-ctl">
               <input class="field" id="s-rainforest" type="password" placeholder="${rainforest.set ? 'Replace key…' : 'Paste API key…'}" autocomplete="off">
@@ -97,7 +121,8 @@
         <div class="card">
           <div class="card-head"><div>
             <div class="card-title">Economics assumptions</div>
-            <div class="card-sub">Used by the opportunity score, sourcing tables and calculator defaults</div>
+            <div class="card-sub">Used by the opportunity score, sourcing tables and calculator defaults ·
+              <b>${Fees.SCHEDULE.label}</b></div>
           </div></div>
 
           ${[
@@ -149,7 +174,7 @@
           </div></div>
           <div class="set-row">
             <div class="set-info">
-              <div class="set-name">Version <span class="micro" id="s-version">1.0.0</span></div>
+              <div class="set-name">Version <span class="micro" id="s-version">1.1.0</span></div>
               <div class="set-desc" style="margin-top:6px">SellScout surfaces resale opportunities by combining demand,
               trend, competition, margin and risk signals into one transparent score. All estimates are research guidance —
               validate with live data before buying inventory. This tool is independent and not affiliated with or endorsed
@@ -175,6 +200,62 @@
     });
 
     el.querySelector('#s-rerun').addEventListener('click', () => Onboarding.show(ctx));
+
+    el.querySelector('#s-notify').addEventListener('change', (e) => {
+      Store.set('notificationsEnabled', e.target.checked);
+      ctx.toast(e.target.checked ? 'Notifications on' : 'Notifications off');
+    });
+
+    el.querySelector('#s-backup').addEventListener('click', async () => {
+      const SECRETS = ['keepaApiKey', 'rainforestApiKey', 'spapi.lwaClientId', 'spapi.lwaClientSecret', 'spapi.refreshToken'];
+      const data = {};
+      for (const [k, v] of Object.entries(Store.all())) {
+        if (!SECRETS.includes(k)) data[k] = v;
+      }
+      const json = JSON.stringify({ app: 'SellScout', exportedAt: new Date().toISOString(), data }, null, 2);
+      const name = 'sellscout-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+      if (window.sellscout) {
+        const res = await window.sellscout.file.save(name, json, 'JSON backup', 'json');
+        if (res.ok) { ctx.toast('Backup saved'); Log.info('Backup exported', { path: res.path }); }
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        a.download = name; a.click(); URL.revokeObjectURL(a.href);
+        ctx.toast('Backup downloaded');
+      }
+    });
+
+    el.querySelector('#s-restore').addEventListener('click', async () => {
+      const apply = (text) => {
+        try {
+          const parsed = JSON.parse(text);
+          if (!parsed || parsed.app !== 'SellScout' || typeof parsed.data !== 'object') {
+            ctx.toast('Not a SellScout backup file'); return;
+          }
+          const SECRETS = ['keepaApiKey', 'rainforestApiKey', 'spapi.lwaClientId', 'spapi.lwaClientSecret', 'spapi.refreshToken'];
+          let n = 0;
+          for (const [k, v] of Object.entries(parsed.data)) {
+            if (!SECRETS.includes(k)) { Store.set(k, v); n++; }
+          }
+          Fmt.setCurrency(Store.get('currency'));
+          Log.info('Backup imported', { keys: n });
+          ctx.rescore();
+          ctx.toast('Backup restored — ' + n + ' settings applied');
+        } catch { ctx.toast('Could not read that backup file'); }
+      };
+      if (window.sellscout) {
+        const res = await window.sellscout.file.openText('SellScout backup', ['json']);
+        if (res.ok) apply(res.content);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = '.json';
+        input.onchange = () => {
+          const f = input.files[0]; if (!f) return;
+          const r = new FileReader(); r.onload = () => apply(r.result); r.readAsText(f);
+        };
+        input.click();
+      }
+    });
 
     el.querySelector('#s-reset').addEventListener('click', () => {
       const wrap = UI.modal(`

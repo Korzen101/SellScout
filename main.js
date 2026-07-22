@@ -284,18 +284,167 @@ async function spapiOrders(days) {
 }
 
 // ---------------------------------------------------------------------------
-// Keepa — optional live Amazon product data if the user adds an API key
+// Keepa — optional live Amazon product data if the user adds an API key.
+// Responses are cached on disk (Keepa bills per token).
 // ---------------------------------------------------------------------------
 
-async function keepaBestSellers(categoryId) {
+const cacheDir = () => path.join(app.getPath('userData'), 'cache');
+
+function cacheGet(key, ttlMs) {
+  try {
+    const f = path.join(cacheDir(), key + '.json');
+    const stat = fs.statSync(f);
+    if (Date.now() - stat.mtimeMs > ttlMs) return null;
+    return JSON.parse(fs.readFileSync(f, 'utf8'));
+  } catch { return null; }
+}
+
+function cacheSet(key, value) {
+  try {
+    fs.mkdirSync(cacheDir(), { recursive: true });
+    fs.writeFileSync(path.join(cacheDir(), key + '.json'), JSON.stringify(value), 'utf8');
+  } catch { /* cache is best-effort */ }
+}
+
+async function keepaFetch(pathname, params, cacheKey, ttlMs) {
   const key = secret('keepaApiKey');
-  if (!key) throw new Error('Keepa API key is not configured.');
-  const url = 'https://api.keepa.com/bestsellers?key=' + encodeURIComponent(key) +
-    '&domain=1&category=' + encodeURIComponent(categoryId || '0');
-  const res = await fetch(url);
+  if (!key) throw new Error('Keepa API key is not configured — add one in Settings.');
+  const cached = cacheKey ? cacheGet(cacheKey, ttlMs) : null;
+  if (cached) return { ...cached, fromCache: true };
+  const qs = new URLSearchParams({ key, domain: '1', ...params }).toString();
+  const res = await fetch('https://api.keepa.com/' + pathname + '?' + qs);
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || 'Keepa request failed');
+  if (cacheKey) cacheSet(cacheKey, data);
+  return data;
+}
+
+async function keepaBestSellers(categoryId) {
+  const data = await keepaFetch('bestsellers', { category: categoryId || '0' },
+    'bestsellers-' + (categoryId || '0'), 12 * 3600 * 1000);
   return { asinList: (data.bestSellersList?.asinList || []).slice(0, 50), tokensLeft: data.tokensLeft };
+}
+
+// Keepa time = minutes since epoch offset by 21564000
+const keepaTimeToMs = (kt) => (kt + 21564000) * 60000;
+
+// Rough BSR → monthly-sales heuristic (used only when Keepa's own
+// bought-past-month figure is unavailable)
+function salesFromRank(rank) {
+  if (!rank || rank <= 0) return 0;
+  return Math.max(0, Math.round(268000 * Math.pow(rank, -0.85)));
+}
+
+// Map a Keepa category name onto our referral-fee schedule keys
+function mapCategory(name) {
+  const n = (name || '').toLowerCase();
+  const table = [
+    ['pet', 'Pet Supplies'], ['kitchen', 'Kitchen & Dining'], ['home', 'Home & Kitchen'],
+    ['sport', 'Sports & Outdoors'], ['outdoor', 'Sports & Outdoors'], ['beauty', 'Beauty & Personal Care'],
+    ['health', 'Health & Household'], ['office', 'Office Products'], ['toy', 'Toys & Games'],
+    ['garden', 'Patio & Garden'], ['patio', 'Patio & Garden'], ['baby', 'Baby'],
+    ['automotive', 'Automotive'], ['tool', 'Tools & Home Improvement'], ['electronic', 'Electronics'],
+    ['clothing', 'Clothing & Accessories'], ['grocery', 'Grocery'], ['craft', 'Arts & Crafts']
+  ];
+  for (const [frag, cat] of table) if (n.includes(frag)) return cat;
+  return 'Default';
+}
+
+function sizeTierFromGrams(g) {
+  if (!g || g <= 0) return 'large-std-1';
+  if (g <= 453) return 'small-std';
+  if (g <= 907) return 'large-std-1';
+  if (g <= 1814) return 'large-std-2';
+  if (g <= 2722) return 'large-std-3';
+  if (g <= 9072) return 'large-std-h';
+  return 'large-bulky';
+}
+
+// 12 monthly demand-index points from Keepa's sales-rank history
+function trendFromRankHistory(csv) {
+  if (!Array.isArray(csv) || csv.length < 8) return Array(12).fill(100);
+  const points = [];
+  for (let i = 0; i + 1 < csv.length; i += 2) {
+    if (csv[i + 1] > 0) points.push({ t: keepaTimeToMs(csv[i]), rank: csv[i + 1] });
+  }
+  if (points.length < 6) return Array(12).fill(100);
+  const now = Date.now();
+  const buckets = Array.from({ length: 12 }, () => []);
+  for (const p of points) {
+    const monthsAgo = Math.floor((now - p.t) / (30.44 * 86400000));
+    if (monthsAgo >= 0 && monthsAgo < 12) buckets[11 - monthsAgo].push(p.rank);
+  }
+  const avgAll = points.reduce((s, p) => s + p.rank, 0) / points.length;
+  let last = 100;
+  return buckets.map((b) => {
+    if (!b.length) return last;
+    const avg = b.reduce((s, x) => s + x, 0) / b.length;
+    // demand ∝ rank^-0.85, indexed to the year's average
+    last = Math.round(100 * Math.pow(avgAll / avg, 0.85));
+    return last;
+  });
+}
+
+async function keepaProduct(asinRaw) {
+  const m = String(asinRaw || '').trim().match(/(?:dp|gp\/product|asin)[\/=]?([A-Z0-9]{10})|^([A-Z0-9]{10})$/i);
+  const asin = (m && (m[1] || m[2]) || '').toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('Enter a valid ASIN (10 characters) or an Amazon product URL.');
+
+  const data = await keepaFetch('product', { asin, stats: '90', history: '1', rating: '1' },
+    'product-' + asin, 6 * 3600 * 1000);
+  const p = data.products && data.products[0];
+  if (!p || !p.title) throw new Error('ASIN ' + asin + ' was not found on amazon.com.');
+
+  const cur = (p.stats && p.stats.current) || [];
+  const cents = (v) => (v != null && v > 0 ? v / 100 : null);
+  const price = cents(cur[18]) || cents(cur[1]) || cents(cur[0]) || 0;
+  const rank = cur[3] > 0 ? cur[3] : (p.salesRanks ? Object.values(p.salesRanks).map((a) => a[a.length - 1]).find((v) => v > 0) : 0);
+  const monthlySold = p.monthlySold > 0 ? p.monthlySold : salesFromRank(rank);
+  const reviews = cur[17] > 0 ? cur[17] : 0;
+  const rating = cur[16] > 0 ? cur[16] / 10 : 0;
+  const offers = cur[11] > 0 ? cur[11] : 1;
+  const fbaFee = p.fbaFees && p.fbaFees.pickAndPackFee > 0 ? p.fbaFees.pickAndPackFee / 100 : null;
+  const grams = p.packageWeight > 0 ? p.packageWeight : p.itemWeight;
+  const rootCat = p.categoryTree && p.categoryTree[0] ? p.categoryTree[0].name : '';
+  const amazonOn = cur[0] != null && cur[0] > 0;
+
+  let hue = 0;
+  for (const ch of asin) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+
+  appendLog('info', 'ASIN analyzed', { asin, tokensLeft: data.tokensLeft, cached: !!data.fromCache });
+
+  return {
+    ok: true,
+    tokensLeft: data.tokensLeft,
+    product: {
+      id: 'live-' + asin,
+      live: true,
+      asin,
+      name: p.title.length > 90 ? p.title.slice(0, 87) + '…' : p.title,
+      category: mapCategory(rootCat),
+      categoryRaw: rootCat,
+      emoji: '🛒',
+      hue,
+      price,
+      sizeTier: sizeTierFromGrams(grams),
+      fbaFee,
+      estMonthlySales: monthlySold,
+      sellers: offers,
+      reviewsTop10: reviews,     // this listing's own review count
+      rating,
+      amazonOnListing: amazonOn,
+      trend12: trendFromRankHistory(p.csv && p.csv[3]),
+      seasonal: null,
+      flags: [],
+      assumedCost: true,
+      sources: [{
+        marketplace: 'Assumed cost (25% of price)',
+        unitCost: Math.round(price * 25) / 100,
+        shipPerUnit: Math.round(price * 3) / 100,
+        moq: 1, leadDays: 0, rating: 0
+      }]
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +529,37 @@ ipcMain.handle('keepa:bestsellers', async (_e, categoryId) => {
   catch (err) { return { ok: false, error: err.message }; }
 });
 
+ipcMain.handle('keepa:product', async (_e, asin) => {
+  try { return await keepaProduct(asin); }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+
+ipcMain.handle('file:save', async (_e, suggestedName, content, extLabel, ext) => {
+  try {
+    const res = await dialog.showSaveDialog(win, {
+      defaultPath: path.join(app.getPath('documents'), suggestedName || 'export.txt'),
+      filters: [{ name: extLabel || 'File', extensions: [ext || 'txt'] }]
+    });
+    if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+    fs.writeFileSync(res.filePath, content, 'utf8');
+    return { ok: true, path: res.filePath };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+
+ipcMain.handle('file:openText', async (_e, extLabel, exts) => {
+  try {
+    const res = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: extLabel || 'Text', extensions: exts || ['csv', 'txt'] }]
+    });
+    if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+    const file = res.filePaths[0];
+    const stat = fs.statSync(file);
+    if (stat.size > 30 * 1024 * 1024) return { ok: false, error: 'File is larger than 30 MB.' };
+    return { ok: true, name: path.basename(file), content: fs.readFileSync(file, 'utf8') };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+
 ipcMain.handle('shell:openExternal', (_e, url) => {
   if (typeof url === 'string' && /^https:\/\//i.test(url)) shell.openExternal(url);
 });
@@ -416,9 +596,49 @@ ipcMain.handle('export:csv', async (_e, suggestedName, content) => {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Auto-update (packaged builds only) + background news refresh
+// ---------------------------------------------------------------------------
+
+function initUpdater() {
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.logger = {
+      info: (m) => appendLog('info', 'updater: ' + m),
+      warn: (m) => appendLog('warn', 'updater: ' + m),
+      error: (m) => appendLog('error', 'updater: ' + m),
+      debug: () => {}
+    };
+    autoUpdater.on('update-downloaded', (info) =>
+      appendLog('info', 'Update downloaded — installs on quit', { version: info.version }));
+    autoUpdater.checkForUpdatesAndNotify()
+      .catch((e) => appendLog('warn', 'Update check failed', { error: e.message }));
+  } catch (e) {
+    appendLog('warn', 'Updater unavailable', { error: e.message });
+  }
+}
+
+function startNewsLoop() {
+  if (SMOKE) return;
+  setInterval(async () => {
+    try {
+      newsCache = { at: 0, items: null }; // force refetch past the cache
+      const items = await fetchNews();
+      if (items && win && !win.isDestroyed()) {
+        win.webContents.send('news:update', items);
+        appendLog('info', 'Background news refresh', { stories: items.length });
+      }
+    } catch { /* offline is fine */ }
+  }, 30 * 60 * 1000);
+}
+
 app.whenReady().then(() => {
+  app.setAppUserModelId('com.korzen.sellscout'); // Windows toast identity
   appendLog('info', 'App started', { version: app.getVersion() });
   createWindow();
+  initUpdater();
+  startNewsLoop();
 });
 
 app.on('window-all-closed', () => {

@@ -84,8 +84,6 @@
       b.addEventListener('click', () => { state.trendTab = b.dataset.t; render(el, ctx); }));
     el.querySelectorAll('#n-filter button').forEach((b) =>
       b.addEventListener('click', () => { state.newsFilter = b.dataset.f; render(el, ctx); }));
-    el.querySelectorAll('[data-ext]').forEach((n) =>
-      n.addEventListener('click', () => UI.ext(n.dataset.ext)));
   }
 
   window.Pages = window.Pages || {};

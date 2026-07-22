@@ -17,6 +17,7 @@
     returnRatePct: 2,            // % of units returned
     storageMonths: 1.5,          // avg months a unit sits in FBA storage
     dutyPct: 0,                  // import duty % applied to unit cost
+    notificationsEnabled: true,
     watchlist: []
   };
 
